@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+
 	"github.com/xxxsen/yamdc/internal/aiengine"
 	_ "github.com/xxxsen/yamdc/internal/aiengine/gemini"
 	_ "github.com/xxxsen/yamdc/internal/aiengine/ollama"
@@ -81,6 +82,12 @@ func main() {
 	logkit.Info("support plugins", zap.Strings("plugins", factory.Plugins()))
 	logkit.Info("support handlers", zap.Strings("handlers", handler.Handlers()))
 	logkit.Info("use plugins", zap.Strings("plugins", c.Plugins))
+	if c.SwitchConfig.ForcedPlugin != "" {
+		logkit.Info("forced plugin enabled, all scraping will use this plugin only", zap.String("forced_plugin", c.SwitchConfig.ForcedPlugin))
+	}
+	if c.SwitchConfig.ForcedURL != "" {
+		logkit.Info("forced URL enabled, scraping from specified URL", zap.String("forced_url", c.SwitchConfig.ForcedURL))
+	}
 	for _, ct := range c.CategoryPlugins {
 		logkit.Info("-- cat plugins", zap.String("cat", ct.Name), zap.Strings("plugins", ct.Plugins))
 	}
@@ -103,6 +110,27 @@ func main() {
 	catSs, err := buildCatSearcher(c, c.CategoryPlugins, c.PluginConfig)
 	if err != nil {
 		logkit.Fatal("build cat searcher failed", zap.Error(err))
+	}
+	// 如果配置了强制使用的插件,则重写搜索器列表
+	if c.SwitchConfig.ForcedPlugin != "" {
+		var forcedSs []searcher.ISearcher
+		var err error
+		if c.SwitchConfig.ForcedURL != "" {
+			// 使用URL Searcher模式: 直接从指定URL获取并解析
+			forcedSs, err = buildURLSearcher(c, c.SwitchConfig.ForcedPlugin, c.SwitchConfig.ForcedURL)
+		} else {
+			// 使用普通强制插件模式
+			forcedSs, err = buildForcedSearcher(c, c.SwitchConfig.ForcedPlugin)
+		}
+		if err != nil {
+			logkit.Fatal("build forced searcher failed", zap.Error(err))
+		}
+		ss = forcedSs
+		// 强制模式下清空分类搜索器,确保所有番号都使用指定插件
+		catSs = make(map[string][]searcher.ISearcher)
+	} else if c.SwitchConfig.ForcedURL != "" {
+		// 校验: forced_url必须配合forced_plugin使用
+		logkit.Fatal("forced_url requires forced_plugin to be set")
 	}
 	tryTestSearcher(c, ss, catSs)
 	ps, err := buildProcessor(c.Handlers, c.HandlerConfig)
@@ -253,6 +281,72 @@ func buildSearcher(c *config.Config, plgs []string, m map[string]config.PluginCo
 		rs = append(rs, sr)
 	}
 	return rs, nil
+}
+
+// buildForcedSearcher 构建强制指定的单一插件搜索器
+func buildForcedSearcher(c *config.Config, pluginName string) ([]searcher.ISearcher, error) {
+	// 检查插件是否存在
+	availablePlugins := factory.Plugins()
+	found := false
+	for _, p := range availablePlugins {
+		if p == pluginName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("forced plugin '%s' not found, available plugins: %v", pluginName, availablePlugins)
+	}
+
+	// 创建单一插件的搜索器
+	plg, err := factory.CreatePlugin(pluginName, struct{}{})
+	if err != nil {
+		return nil, fmt.Errorf("create forced plugin failed, name:%s, err:%w", pluginName, err)
+	}
+	sr, err := searcher.NewDefaultSearcher(pluginName, plg,
+		searcher.WithHTTPClient(client.DefaultClient()),
+		searcher.WithSearchCache(c.SwitchConfig.EnableSearchMetaCache),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create forced searcher failed, plugin:%s, err:%w", pluginName, err)
+	}
+	logutil.GetLogger(context.Background()).Info("create forced searcher succ", zap.String("plugin", pluginName), zap.Strings("domains", plg.OnGetHosts(context.Background())))
+	return []searcher.ISearcher{sr}, nil
+}
+
+// buildURLSearcher 构建直接从指定URL获取数据的搜索器
+func buildURLSearcher(c *config.Config, pluginName string, targetURL string) ([]searcher.ISearcher, error) {
+	// 检查插件是否存在
+	availablePlugins := factory.Plugins()
+	found := false
+	for _, p := range availablePlugins {
+		if p == pluginName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("forced plugin '%s' not found, available plugins: %v", pluginName, availablePlugins)
+	}
+
+	// 创建插件实例
+	plg, err := factory.CreatePlugin(pluginName, struct{}{})
+	if err != nil {
+		return nil, fmt.Errorf("create plugin failed, name:%s, err:%w", pluginName, err)
+	}
+
+	// 创建URL Searcher
+	sr, err := searcher.NewURLSearcher(pluginName+"-url", targetURL, plg,
+		searcher.WithHTTPClient(client.DefaultClient()),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create url searcher failed, plugin:%s, url:%s, err:%w", pluginName, targetURL, err)
+	}
+	logutil.GetLogger(context.Background()).Info("create url searcher succ",
+		zap.String("plugin", pluginName),
+		zap.String("target_url", targetURL),
+	)
+	return []searcher.ISearcher{sr}, nil
 }
 
 func buildProcessor(hs []string, m map[string]config.HandlerConfig) ([]processor.IProcessor, error) {
