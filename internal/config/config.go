@@ -102,10 +102,12 @@ type Config struct {
 }
 
 type SwitchConfig struct {
-	EnableSearchMetaCache    bool `json:"enable_search_meta_cache"`    //开启搜索缓存
-	EnableLinkMode           bool `json:"enable_link_mode"`            //测试场景下使用, 开启链接模式
-	EnablePigoFaceRecognizer bool `json:"enable_pigo_face_recognizer"` //开启pigo人脸识别
-	EnableSearcherCheck      bool `json:"enable_searcher_check"`       //测试场景使用, 检查插件的目标域名是否还能访问
+	EnableSearchMetaCache    bool   `json:"enable_search_meta_cache"`    //开启搜索缓存
+	EnableLinkMode           bool   `json:"enable_link_mode"`            //测试场景下使用, 开启链接模式
+	EnablePigoFaceRecognizer bool   `json:"enable_pigo_face_recognizer"` //开启pigo人脸识别
+	EnableSearcherCheck      bool   `json:"enable_searcher_check"`       //测试场景使用, 检查插件的目标域名是否还能访问
+	ForcedPlugin             string `json:"forced_plugin"`               //强制使用指定的插件进行刮削, 为空则使用默认的插件链
+	ForcedURL                string `json:"forced_url"`                  //强制从指定的URL获取元数据, 需配合forced_plugin使用
 }
 
 type RuleConfig struct {
