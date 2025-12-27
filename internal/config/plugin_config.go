@@ -23,4 +23,5 @@ var sysCategoryPlugins = []CategoryPlugin{
 	{Name: "COSPURI", Plugins: []string{"cospuri"}},
 	{Name: "MD", Plugins: []string{"madouqu", "ri400"}},
 	{Name: "MANYVIDS", Plugins: []string{"manyvids"}},
+	{Name: "PORNHUB", Plugins: []string{"pornhub"}},
 }

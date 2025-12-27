@@ -20,5 +20,6 @@ const (
 	SSCospuri    = "cospuri"
 	SSMadouqu    = "madouqu"
 	SSManyVids   = "manyvids"
+	SSPornHub    = "pornhub"
 	SSRi400      = "ri400"
 )
